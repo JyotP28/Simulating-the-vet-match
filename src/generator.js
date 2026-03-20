@@ -1,5 +1,9 @@
 // src/generator.js
 
+/**
+ * Empirical distribution of internship and residency positions.
+ * Weights are derived from historical VIRMP match target data.
+ */
 const INTERN_SPECIALTY_WEIGHTS = [
   { name: 'Rotating – Small Animal', count: 1295 },
   { name: 'Rotating - Equine', count: 150 },
@@ -33,6 +37,10 @@ const RESIDENCY_SPECIALTY_WEIGHTS = [
   { name: 'Dentistry', count: 18 }
 ];
 
+/**
+ * Historic applicant volume by veterinary institution.
+ * Format: [Institution Name, Total Applicants, Withdrawn Applicants]
+ */
 const VET_SCHOOL_DATA = [
   ['Arizona', 34, 0], ['Auburn', 23, 1], ['California', 125, 6], ['Colorado', 89, 2],
   ['Florida', 67, 3], ['Georgia', 77, 5], ['Illinois', 50, 5], ['Iowa', 47, 2],
@@ -56,6 +64,9 @@ const VET_SCHOOL_DATA = [
   ['Sydney', 12, 1], ['Universidad Cardenal Herrera', 15, 1]
 ];
 
+/**
+ * Maps a veterinary school to its broad US geographic region.
+ */
 function getSchoolRegion(school) {
   const s = school.toLowerCase();
   if (s.match(/california|colorado|arizona|oregon|washington|western|midwestern/)) return 'West';
@@ -65,6 +76,9 @@ function getSchoolRegion(school) {
   return 'International'; 
 }
 
+/**
+ * Infers the geographical region of a program based on its title and institution string.
+ */
 function getProgramRegion(title, inst) {
   const str = (title + " " + inst).toLowerCase();
   if (str.match(/california|colorado|arizona|oregon|washington|nevada|utah|idaho|new mexico|davis|angeles|diego|francisco|pacific|west/)) return 'West';
@@ -76,6 +90,9 @@ function getProgramRegion(title, inst) {
   return usRegions[Math.floor(Math.random() * usRegions.length)];
 }
 
+/**
+ * Standardizes raw VIRMP program titles into standardized specialty categories.
+ */
 function guessCategoryFromTitle(title, type) {
   const t = (title || "").toLowerCase();
   
@@ -117,6 +134,9 @@ function guessCategoryFromTitle(title, type) {
   }
 }
 
+/**
+ * Returns a specialty category based on the empirical probability distribution.
+ */
 function getWeightedSpecialty(specialtyList) {
   const total = specialtyList.reduce((sum, s) => sum + s.count, 0);
   let rand = Math.random() * total;
@@ -127,6 +147,10 @@ function getWeightedSpecialty(specialtyList) {
   return specialtyList[0].name;
 }
 
+/**
+ * Box-Muller transform to generate normally distributed statistical scores.
+ * Bounded between 1 and 10.
+ */
 function randomNormal(mean, stdDev) {
   let u = 0, v = 0;
   while(u === 0) u = Math.random(); 
@@ -136,16 +160,24 @@ function randomNormal(mean, stdDev) {
   return Math.max(1, Math.min(10, num)); 
 }
 
-// NEW: Accept the programWeights parameter
+/**
+ * Generates the full matching environment including the simulated applicant pool 
+ * and program constraints.
+ * 
+ * @param {Object} userProfile - The current user's applicant profile and rank list.
+ * @param {Array} rawPrograms - The parsed program data from the CSV.
+ * @param {Object} programWeights - The global evaluation criteria configured by the user.
+ */
 export function generateSimulationData(userProfile, rawPrograms, programWeights) {
   const usRegions = ['West', 'Midwest', 'South', 'Northeast'];
   
-  // Normalize the user-defined algorithm weights
+  // Normalize evaluation weights to ensure scale consistency
   const totalW = programWeights.lor + programWeights.interview + programWeights.gpa;
   const wLor = totalW > 0 ? programWeights.lor / totalW : 0;
   const wInt = totalW > 0 ? programWeights.interview / totalW : 0;
   const wGpa = totalW > 0 ? programWeights.gpa / totalW : 0;
 
+  // Initialize Programs
   const programs = rawPrograms.map((p) => {
     const titleLower = (p.title || "").toLowerCase();
     const instLower = (p.institution || "").toLowerCase();
@@ -163,10 +195,12 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
 
   const applicants = [userProfile];
 
+  // Generate Applicant Pool based on empirical school data
   VET_SCHOOL_DATA.forEach(([schoolName, totalCount, withdrawnCount]) => {
     const activeInMatch = totalCount - withdrawnCount;
     for (let i = 0; i < activeInMatch; i++) {
       const rt = Math.random();
+      // Track probabilities: ~26.5% apply to both, ~22.1% residency only, ~51.4% internship only
       let track = (rt < 0.265) ? 'Both' : (rt > 0.779 ? 'Residency' : 'Internship');
       
       const specialtyGoal = (track === 'Residency' || track === 'Both') 
@@ -199,6 +233,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     }
   });
 
+  // Pad the remaining applicant pool to meet the exact 2026 target volume (2,889)
   let extraCounter = 0;
   while (applicants.length < 2889) {
     const t = Math.random() < 0.26 ? 'Both' : 'Internship';
@@ -216,6 +251,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     extraCounter++;
   }
 
+  // Generate Rank Order Lists for simulated applicants
   applicants.forEach(app => {
     if (app.id === 'USER') return;
 
@@ -229,6 +265,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     } else if (app.track === 'Both') {
       potRes = programs.filter(p => p.type === 'Residency' && p.category === app.specialtyGoal);
       
+      // Fallback mapping for applicants applying to both tracks
       let internGoal = app.specialtyGoal;
       if (internGoal === 'Surgery - Small Animal') internGoal = 'Surgery';
       if (internGoal === 'Medicine - Small Animal') internGoal = 'Internal Medicine';
@@ -249,6 +286,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     const appGpaScore = (5 - app.stats.classRank) * 2.5; 
     const appStrength = (app.stats.lorStrength * wLor) + (app.stats.interview * wInt) + (appGpaScore * wGpa);
 
+    // Score available programs based on applicant preference heuristics
     const scoreGroup = (group) => {
       return group.map(p => {
         const capacityBonus = Math.sqrt(p.positions || 1) * 12.0; 
@@ -260,7 +298,6 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
         }
 
         let safetyBonus = 0;
-        // Adjusted the threshold to reflect the normalized 0-10 scale
         if (appStrength < 7.5 && !p.isInstitution && p.positions <= 3) {
             safetyBonus = 50.0; 
         }
@@ -274,6 +311,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     let finalIds = [];
     const tierRoll = Math.random();
     
+    // Determine Rank List length based on track and ambition tier
     if (app.track === 'Both') {
       const resLimit = (tierRoll < 0.64) ? 10 : (tierRoll < 0.93 ? 20 : 45); 
       const intLimit = (tierRoll < 0.85) ? 10 : (tierRoll < 0.97 ? 20 : 45); 
@@ -293,13 +331,14 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     app.rankList = Array.from(new Set(finalIds));
   });
 
+  // Evaluate and compile Program Rank Order Lists
   programs.forEach(prog => {
     const interestedApps = applicants.filter(a => a.rankList.includes(prog.id));
     const rankedApps = interestedApps.map(app => {
       const gpaScore = (5 - app.stats.classRank) * 2.5; 
       const programFit = Math.random() * 3.0; 
       
-      // NEW: Calculate their score based entirely on the user's custom weights!
+      // Calculate applicant competitive score based on the global Institutional Priority weights
       const score = (app.stats.lorStrength * wLor) + (app.stats.interview * wInt) + (gpaScore * wGpa) + programFit;
       
       return { id: app.id, score };
@@ -307,6 +346,7 @@ export function generateSimulationData(userProfile, rawPrograms, programWeights)
     
     rankedApps.sort((a, b) => b.score - a.score);
 
+    // Limit the maximum number of applicants a program is willing to rank
     const rankLimit = (prog.positions || 1) * 60; 
     prog.rankList = rankedApps.slice(0, rankLimit).map(a => a.id);
   });

@@ -5,25 +5,47 @@ import { generateSimulationData } from './generator';
 import { runDoubleMatch } from './matcher';
 
 function App() {
+  // --- Data & Loading State ---
   const [availablePrograms, setAvailablePrograms] = useState([]);
-  const [userStats, setUserStats] = useState({ lorStrength: 8.5, interview: 7.0, cvAndStatement: 8.0, classRank: 2 });
-  const [programWeights, setProgramWeights] = useState({ lor: 45, interview: 35, gpa: 20 });
-  const [userRankList, setUserRankList] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [explorerSearch, setExplorerSearch] = useState(''); 
-  const [matchResults, setMatchResults] = useState(null);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [loadingCsv, setLoadingCsv] = useState(true);
   const [showDisclaimer, setShowDisclaimer] = useState(true);
 
+  // --- User Profile & Preferences ---
+  const [userStats, setUserStats] = useState({ 
+    lorStrength: 8.5, 
+    interview: 7.0, 
+    cvAndStatement: 8.0, 
+    classRank: 2 
+  });
+  
+  // --- Simulation Parameters (The Algorithm Weights) ---
+  const [programWeights, setProgramWeights] = useState({ 
+    lor: 45, 
+    interview: 35, 
+    gpa: 20 
+  });
+  
+  // --- User Selection & Ranking ---
+  const [userRankList, setUserRankList] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // --- Simulation Execution State ---
+  const [matchResults, setMatchResults] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  // --- UI/Explorer State ---
   const [draggedItemIndex, setDraggedItemIndex] = useState(null);
   const [dragOverItemIndex, setDragOverItemIndex] = useState(null);
-
+  const [explorerSearch, setExplorerSearch] = useState(''); 
   const [explorerMode, setExplorerMode] = useState('programs'); 
   const [viewedProgram, setViewedProgram] = useState(null);
   const [viewedSchool, setViewedSchool] = useState(null);
   const [viewedApplicant, setViewedApplicant] = useState(null);
 
+  /**
+   * Fetch and parse the VIRMP program data on mount.
+   * Standardizes CSV column names to handle varying header formats.
+   */
   useEffect(() => {
     Papa.parse('/virmp.csv', {
       download: true,
@@ -65,6 +87,7 @@ function App() {
     });
   }, []);
 
+  // --- Drag and Drop Logic for Rank Order List ---
   const handleDragStart = (index) => setDraggedItemIndex(index);
   const handleDragEnter = (index) => setDragOverItemIndex(index);
   const handleDragOver = (e) => e.preventDefault();
@@ -80,8 +103,14 @@ function App() {
     setDragOverItemIndex(null);
   };
 
+  /**
+   * Primary simulation driver.
+   * Generates a population of simulated applicants and matches them against programs
+   * using the provided weights and user ranking preferences.
+   */
   const executeSimulation = () => {
     setIsSimulating(true);
+    // Timeout used to provide visual feedback for the processing task
     setTimeout(() => {
       const userProfile = { 
         id: 'USER', 
@@ -93,13 +122,16 @@ function App() {
         rankList: userRankList, 
         matchedProgram: null 
       };
+      
       const generatedData = generateSimulationData(userProfile, availablePrograms, programWeights);
       const results = runDoubleMatch(generatedData.applicants, generatedData.programs);
+      
       setMatchResults(results);
       setIsSimulating(false);
     }, 500);
   };
 
+  // --- Explorer Data Helpers ---
   const explorerPrograms = matchResults 
     ? matchResults.matchedPrograms.filter(p => p.title.toLowerCase().includes(explorerSearch.toLowerCase())) 
     : [];
@@ -112,11 +144,17 @@ function App() {
     ? matchResults.matchedApplicants.filter(a => a.vetSchool === viewedSchool) 
     : [];
 
+  /**
+   * Renders the comparison of simulation results against 
+   * target empirical accuracy benchmarks.
+   */
   const renderStatistics = () => {
     if (!matchResults) return null;
     const apps = matchResults.matchedApplicants;
     const progs = matchResults.matchedPrograms;
     const matchedApps = apps.filter(a => a.matchedProgram);
+    
+    // Categorize pools for Residency vs Internship rates
     const resPool = apps.filter(a => a.track === 'Residency' || a.track === 'Both');
     const resMatches = matchedApps.filter(a => {
         const p = progs.find(prog => prog.id === a.matchedProgram);
@@ -128,6 +166,7 @@ function App() {
         return p?.type === 'Internship';
     });
 
+    // Calculate Fill Rates
     const totalPos = progs.reduce((sum, p) => sum + p.positions, 0);
     const filledPos = progs.reduce((sum, p) => sum + (p.matchedApplicants?.length || 0), 0);
     const intProgs = progs.filter(p => p.type === 'Internship');
@@ -181,7 +220,7 @@ function App() {
     );
   };
 
-  if (loadingCsv) return <div style={{ padding: '50px', fontSize: '24px' }}>Loading Match Data...</div>;
+  if (loadingCsv) return <div style={{ padding: '50px', fontSize: '24px' }}>Loading Program Data...</div>;
 
   const userApp = matchResults?.matchedApplicants.find(a => a.id === 'USER');
   const userMatchedProgram = userApp?.matchedProgram ? availablePrograms.find(p => p.id === userApp.matchedProgram) : null;
@@ -190,7 +229,7 @@ function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', padding: '30px', fontFamily: 'system-ui', maxWidth: '1200px', margin: '0 auto', color: '#333' }}>
       
-      {/* DISCLAIMER MODAL */}
+      {/* INITIAL DISCLAIMER MODAL */}
       {showDisclaimer && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '16px', maxWidth: '500px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)' }}>
@@ -217,6 +256,7 @@ function App() {
           <p style={{ color: '#666' }}>2026 Empirical Evaluation Modeling</p>
         </header>
 
+        {/* INPUT SECTION: User Attributes & Global Weights */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
           <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', border: '1px solid #e1e4e8', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <h2 style={{ marginTop: 0 }}>1. Your Attributes</h2>
@@ -252,10 +292,11 @@ function App() {
                 <input type="range" min="0" max="100" step="1" value={programWeights[key]} style={{ width: '100%', accentColor: '#0ea5e9' }} onChange={e => setProgramWeights({...programWeights, [key]: parseInt(e.target.value)})} />
               </div>
             ))}
-            <div style={{ fontSize: '11px', textAlign: 'center', color: '#94a3b8' }}>Weights do not need to equal 100. The algorithm will automatically normalize them.</div>
+            <div style={{ fontSize: '11px', textAlign: 'center', color: '#94a3b8' }}>Weights are normalized automatically to ensure consistency.</div>
           </div>
         </div>
 
+        {/* RANKING SECTION: Program Search & Order List */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
           <div style={{ background: '#fff', padding: '25px', borderRadius: '12px', border: '1px solid #e1e4e8', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
             <h2 style={{ marginTop: 0 }}>3. Search Programs</h2>
@@ -293,31 +334,34 @@ function App() {
         </div>
 
         <button onClick={executeSimulation} disabled={userRankList.length === 0 || isSimulating} style={{ width: '100%', padding: '20px', background: userRankList.length === 0 ? '#cbd5e1' : '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '20px', fontWeight: 'bold', cursor: userRankList.length === 0 ? 'not-allowed' : 'pointer', boxShadow: userRankList.length === 0 ? 'none' : '0 4px 6px rgba(16, 185, 129, 0.2)' }}>
-          {isSimulating ? 'Matching 2,889 Applicants...' : 'Run Match Simulation'}
+          {isSimulating ? 'Running Simulation...' : 'Run Match Simulation'}
         </button>
 
+        {/* RESULTS SUMMARY */}
         {matchResults && (
           <div style={{ marginTop: '20px', padding: '20px', background: userMatchedProgram ? '#ecfdf5' : '#fef2f2', border: `1px solid ${userMatchedProgram ? '#10b981' : '#ef4444'}`, borderRadius: '12px', textAlign: 'center' }}>
             <h2 style={{ margin: '0 0 10px 0', color: userMatchedProgram ? '#065f46' : '#991b1b' }}>Your Simulation Result</h2>
             {userMatchedProgram ? (
               <p style={{ margin: 0, fontSize: '18px', color: '#047857' }}>Congratulations! You matched at your <strong>#{userRankIndex} choice</strong>: <br/> <strong>{userMatchedProgram.title}</strong></p>
             ) : (
-              <p style={{ margin: 0, fontSize: '18px', color: '#b91c1c' }}>You did not match in this simulation. You may need to expand your rank list, reorder it, or improve your stats.</p>
+              <p style={{ margin: 0, fontSize: '18px', color: '#b91c1c' }}>You did not match in this simulation. Consider reordering your list or exploring more programs.</p>
             )}
           </div>
         )}
 
+        {/* DATA EXPLORER & ANALYTICS */}
         {matchResults && (
           <div style={{ marginTop: '40px' }}>
             {renderStatistics()}
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #eee', paddingBottom: '10px', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0 }}>Match Explorer</h2>
+              <h2 style={{ margin: 0 }}>Data Explorer</h2>
               <div style={{ display: 'flex', gap: '10px', background: '#f1f5f9', padding: '5px', borderRadius: '8px' }}>
-                <button onClick={() => setExplorerMode('programs')} style={{ padding: '8px 16px', background: explorerMode === 'programs' ? '#fff' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>By Program</button>
-                <button onClick={() => setExplorerMode('schools')} style={{ padding: '8px 16px', background: explorerMode === 'schools' ? '#fff' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>By School</button>
+                <button onClick={() => setExplorerMode('programs')} style={{ padding: '8px 16px', background: explorerMode === 'programs' ? '#fff' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Programs</button>
+                <button onClick={() => setExplorerMode('schools')} style={{ padding: '8px 16px', background: explorerMode === 'schools' ? '#fff' : 'transparent', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Schools</button>
               </div>
             </div>
             <div style={{ display: 'flex', gap: '20px', height: '600px' }}>
+              {/* Navigation Column */}
               <div style={{ flex: 1, border: '1px solid #e2e8f0', background: '#fff', borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <div style={{ padding: '15px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                   <h3 style={{ margin: 0 }}>{explorerMode === 'programs' ? 'Programs' : 'Schools'}</h3>
@@ -338,6 +382,7 @@ function App() {
                   )}
                 </ul>
               </div>
+              {/* Applicant Pool Column */}
               <div style={{ flex: 1, border: '1px solid #e2e8f0', background: '#fff', borderRadius: '8px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 <h3 style={{ margin: 0, padding: '15px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>Applicants</h3>
                 <div style={{ padding: '15px', overflowY: 'auto', flex: 1 }}>
@@ -351,9 +396,10 @@ function App() {
                     schoolApplicants.map(app => (
                       <div key={app.id} onClick={() => setViewedApplicant(app)} style={{ padding: '10px', cursor: 'pointer', background: viewedApplicant?.id === app.id ? '#f1f5f9' : '#fff', borderBottom: '1px solid #eee', fontSize: '13px' }}>{app.name} {app.matchedProgram ? '✅' : '❌'}</div>
                     ))
-                  ) : <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '50px' }}>Select an item</p>}
+                  ) : <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '50px' }}>Select an item to view data</p>}
                 </div>
               </div>
+              {/* Detail View Column */}
               <div style={{ flex: 1, border: '1px solid #e2e8f0', background: '#fff', borderRadius: '8px', padding: '20px', overflowY: 'auto' }}>
                 {viewedApplicant ? (
                   <>
@@ -362,10 +408,10 @@ function App() {
                     <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '8px', marginBottom: '15px', fontSize: '13px', color: '#475569' }}>
                       <strong>Goal:</strong> {viewedApplicant.specialtyGoal} <br/>
                       <strong>Track:</strong> {viewedApplicant.track} 
-                      {viewedApplicant.id !== 'USER' && <><br/><strong>Prefers:</strong> {viewedApplicant.preferredRegion}</>}
+                      {viewedApplicant.id !== 'USER' && <><br/><strong>Preference:</strong> {viewedApplicant.preferredRegion}</>}
                     </div>
                     <div style={{ background: '#eff6ff', padding: '10px', borderRadius: '8px', marginBottom: '15px', fontSize: '13px', border: '1px solid #bfdbfe', color: '#1e3a8a' }}>
-                      <strong style={{ color: '#1d4ed8', fontSize: '14px' }}>Applicant Stats:</strong> <br/>
+                      <strong style={{ color: '#1d4ed8', fontSize: '14px' }}>Evaluation Stats:</strong> <br/>
                       <strong>Class Rank:</strong> Quartile {viewedApplicant.stats.classRank} <br/>
                       <strong>LOR Strength:</strong> {viewedApplicant.stats.lorStrength.toFixed(1)} / 10 <br/>
                       <strong>CV/Statement:</strong> {viewedApplicant.stats.cvAndStatement.toFixed(1)} / 10 <br/>
@@ -381,21 +427,20 @@ function App() {
                       })}
                     </div>
                   </>
-                ) : <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '50px' }}>Select an applicant to view their details</p>}
+                ) : <p style={{ color: '#94a3b8', textAlign: 'center', marginTop: '50px' }}>Select an applicant to view details</p>}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* NEW FOOTER */}
       <footer style={{ marginTop: '60px', padding: '30px 0', borderTop: '1px solid #e2e8f0', textAlign: 'center', color: '#64748b' }}>
         <p style={{ margin: '0 0 10px 0', fontSize: '14px' }}>
-          Developed as an interactive simulation of the Veterinary Match Process.
+          Interactive simulation of the Veterinary Match Process.
         </p>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
           <a 
-            href="https://www.linkedin.com/in/jyotpatel28/" // REPLACE WITH YOUR ACTUAL LINK
+            href="https://www.linkedin.com/in/jyotpatel28/"
             target="_blank" 
             rel="noopener noreferrer" 
             style={{ color: '#0ea5e9', textDecoration: 'none', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '5px' }}

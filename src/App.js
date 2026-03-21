@@ -237,8 +237,8 @@ function App() {
 
       <div style={{ flex: 1 }}>
         <header style={{ marginBottom: '40px', textAlign: 'center' }}>
-          <h1 className="main-title" style={{ fontFamily: tokens.fonts.display }}>StableVet Simulator</h1>
-          <p style={{ color: tokens.colors.subtext, fontSize: '16px', fontWeight: '500', margin: 0 }}>Empirical Evaluation Modeling for 2026</p>
+          <h1 className="main-title" style={{ fontFamily: tokens.fonts.display }}>Veterinary Match Simulator</h1>
+          <p style={{ color: tokens.colors.subtext, fontSize: '16px', fontWeight: '500', margin: 0 }}>Based upon 2026 match data</p>
         </header>
 
         {/* --- ROW 1: Inputs --- */}
